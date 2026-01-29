@@ -1,0 +1,45 @@
+{
+  "people": [
+    {
+      "id": "p1",
+      "name": "John Smith",
+      "birth": "1948",
+      "death": "",
+      "notes": "Born in Tallahassee.",
+      "parents": [],
+      "spouses": ["p2"],
+      "children": ["p3", "p4"]
+    },
+    {
+      "id": "p2",
+      "name": "Mary Smith",
+      "birth": "1950",
+      "death": "",
+      "notes": "",
+      "parents": [],
+      "spouses": ["p1"],
+      "children": ["p3", "p4"]
+    },
+    {
+      "id": "p3",
+      "name": "Alex Smith",
+      "birth": "1975",
+      "death": "",
+      "notes": "",
+      "parents": ["p1", "p2"],
+      "spouses": [],
+      "children": []
+    },
+    {
+      "id": "p4",
+      "name": "Jamie Smith",
+      "birth": "1978",
+      "death": "",
+      "notes": "",
+      "parents": ["p1", "p2"],
+      "spouses": [],
+      "children": []
+    }
+  ],
+  "rootId": "p1"
+}
