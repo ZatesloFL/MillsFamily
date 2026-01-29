@@ -65,12 +65,12 @@
 
   // 1) Paste your Google Form embed URL here (from Send -> <> Embed)
   // It should end with: viewform?embedded=true
-  const GOOGLE_FORM_EMBED_URL = 'YOUR_GOOGLE_FORM_EMBED_URL';
+  const GOOGLE_FORM_EMBED_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSeXghPxEUvUDT_JYjwtpl3DXHjMwnaCSMXDybsVujfvFECyRQ/viewform?embedded=true';
 
   // 2) Replace these entry IDs with your form field entry numbers
   // You will get them from: Google Form -> ⋮ -> Get pre-filled link
-  const GOOGLE_FORM_ENTRY_PERSON_ID   = 'entry.1111111111';
-  const GOOGLE_FORM_ENTRY_PERSON_NAME = 'entry.2222222222';
+  const GOOGLE_FORM_ENTRY_PERSON_ID   = 'entry.537212928';
+  const GOOGLE_FORM_ENTRY_PERSON_NAME = 'entry.1669409673';
 
   // --------------------
   // State
