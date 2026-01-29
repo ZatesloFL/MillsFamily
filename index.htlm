@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Family Tree</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; }
+    header { padding: 12px 16px; border-bottom: 1px solid #e5e7eb; display:flex; gap:12px; align-items:center; }
+    #wrap { display: grid; grid-template-columns: 1fr 380px; height: calc(100vh - 56px); }
+    #left { overflow: auto; padding: 12px; }
+    #right { border-left: 1px solid #e5e7eb; padding: 12px; overflow:auto; }
+    input[type="search"] { width: 360px; max-width: 60vw; padding: 8px 10px; border:1px solid #d1d5db; border-radius: 10px; }
+    .hint { color:#6b7280; font-size: 13px; }
+
+    /* Simple tree layout (by generation) */
+    .tree { position: relative; min-height: 600px; }
+    .node {
+      display: inline-block;
+      padding: 8px 10px;
+      border: 1px solid #d1d5db;
+      border-radius: 12px;
+      background: #fff;
+      cursor: pointer;
+      box-shadow: 0 1px 2px rgba(0,0,0,.04);
+      max-width: 260px;
+    }
+    .node:hover { outline: 2px solid #93c5fd; }
+    .node .name { font-weight: 700; }
+    .node .meta { font-size: 12px; color:#6b7280; margin-top: 2px; }
+    .level { display:flex; gap:12px; align-items:flex-start; margin-bottom: 18px; flex-wrap: wrap; }
+
+    .panel h2 { margin: 0 0 8px; font-size: 18px; }
+    .kv { margin: 8px 0; }
+    .kv b { display:inline-block; width: 86px; color:#374151; }
+    .pill { display:inline-block; padding: 4px 8px; border-radius: 999px; background:#f3f4f6; margin: 2px 4px 0 0; font-size: 12px; cursor: pointer; }
+
+    .err { color: #b91c1c; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div style="font-weight:800;">Family Tree</div>
+    <input id="search" type="search" placeholder="Search a name…" />
+    <div class="hint">Click a person → details + suggestion form.</div>
+  </header>
+
+  <div id="wrap">
+    <div id="left">
+      <div id="tree" class="tree"></div>
+    </div>
+
+    <div id="right">
+      <div class="panel" id="panel">
+        <div class="hint">Select someone from the tree.</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // --------------------
+  // Configuration
+  // --------------------
+  const DATA_URL = './family.json';
+
+  // 1) Paste your Google Form embed URL here (from Send -> <> Embed)
+  // It should end with: viewform?embedded=true
+  const GOOGLE_FORM_EMBED_URL = 'YOUR_GOOGLE_FORM_EMBED_URL';
+
+  // 2) Replace these entry IDs with your form field entry numbers
+  // You will get them from: Google Form -> ⋮ -> Get pre-filled link
+  const GOOGLE_FORM_ENTRY_PERSON_ID   = 'entry.1111111111';
+  const GOOGLE_FORM_ENTRY_PERSON_NAME = 'entry.2222222222';
+
+  // --------------------
+  // State
+  // --------------------
+  let data = null;
+  let peopleById = new Map();
+  let selectedId = null;
+
+  // --------------------
+  // Helpers
+  // --------------------
+  function esc(s) {
+    return (s ?? '').toString().replace(/[&<>"']/g, c => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+
+  function personLabel(p) {
+    const b = p.birth ? p.birth : '';
+    const d = p.death ? p.death : '';
+    const years = (b || d) ? `${b}${d ? '–' + d : ''}` : '';
+    return { name: p.name, years };
+  }
+
+  function buildGoogleFormUrl(person) {
+    if (!GOOGLE_FORM_EMBED_URL || GOOGLE_FORM_EMBED_URL.includes('YOUR_GOOGLE_FORM_EMBED_URL')) {
+      return '';
+    }
+    const params = new URLSearchParams();
+    params.set(GOOGLE_FORM_ENTRY_PERSON_ID, person.id);
+    params.set(GOOGLE_FORM_ENTRY_PERSON_NAME, person.name);
+    return GOOGLE_FORM_EMBED_URL + '&' + params.toString();
+  }
+
+  // Build a simple descendant tree from rootId -> children -> children...
+  function buildDescTree(rootId, depthLimit = 7) {
+    const visited = new Set();
+    function build(id, depth) {
+      if (!id || visited.has(id) || depth > depthLimit) return null;
+      visited.add(id);
+      const p = peopleById.get(id);
+      if (!p) return null;
+      const children = (p.children || []).map(cid => build(cid, depth + 1)).filter(Boolean);
+      return { id, children };
+    }
+    return build(rootId, 0);
+  }
+
+  // Lay out generations (BFS) for a readable view
+  function levelsFromTree(root) {
+    const levels = [];
+    const q = [{ node: root, depth: 0 }];
+    while (q.length) {
+      const { node, depth } = q.shift();
+      if (!node) continue;
+      if (!levels[depth]) levels[depth] = [];
+      levels[depth].push(node.id);
+      for (const c of (node.children || [])) q.push({ node: c, depth: depth + 1 });
+    }
+    return levels;
+  }
+
+  function renderTree() {
+    const treeEl = document.getElementById('tree');
+    treeEl.innerHTML = '';
+
+    const rootId = data.rootId;
+    const root = buildDescTree(rootId);
+
+    if (!root) {
+      treeEl.innerHTML = '<div class="err">Could not build tree. Check family.json rootId and ids.</div>';
+      return;
+    }
+
+    const levels = levelsFromTree(root);
+    levels.forEach((ids, levelIdx) => {
+      const row = document.createElement('div');
+      row.className = 'level';
+
+      const title = document.createElement('div');
+      title.className = 'hint';
+      title.style.minWidth = '90px';
+      title.textContent = levelIdx === 0 ? 'Root' : `Gen ${levelIdx}`;
+      row.appendChild(title);
+
+      ids.forEach(id => {
+        const p = peopleById.get(id);
+        if (!p) return;
+        const { name, years } = personLabel(p);
+
+        const box = document.createElement('div');
+        box.className = 'node';
+        box.dataset.id = id;
+        box.innerHTML = `
+          <div class="name">${esc(name)}</div>
+          <div class="meta">${esc(years)}</div>
+          <div class="meta">${esc(id)}</div>
+        `;
+        box.addEventListener('click', () => selectPerson(id));
+        row.appendChild(box);
+      });
+
+      treeEl.appendChild(row);
+    });
+  }
+
+  function renderPanel(id) {
+    const panel = document.getElementById('panel');
+    const p = peopleById.get(id);
+
+    if (!p) {
+      panel.innerHTML = '<div class="err">Person not found.</div>';
+      return;
+    }
+
+    const parents = (p.parents || []).map(pid => peopleById.get(pid)).filter(Boolean);
+    const spouses = (p.spouses || []).map(sid => peopleById.get(sid)).filter(Boolean);
+    const children = (p.children || []).map(cid => peopleById.get(cid)).filter(Boolean);
+
+    const formUrl = buildGoogleFormUrl(p);
+
+    panel.innerHTML = `
+      <h2>${esc(p.name)}</h2>
+      <div class="kv"><b>ID</b> ${esc(p.id)}</div>
+      <div class="kv"><b>Born</b> ${esc(p.birth || '')}</div>
+      <div class="kv"><b>Died</b> ${esc(p.death || '')}</div>
+      <div class="kv"><b>Notes</b> <span class="hint">${esc(p.notes || '—')}</span></div>
+
+      <div class="kv"><b>Parents</b>
+        ${parents.length ? parents.map(x => `<span class="pill" data-jump="${esc(x.id)}">${esc(x.name)}</span>`).join('') : '<span class="hint">—</span>'}
+      </div>
+
+      <div class="kv"><b>Spouse</b>
+        ${spouses.length ? spouses.map(x => `<span class="pill" data-jump="${esc(x.id)}">${esc(x.name)}</span>`).join('') : '<span class="hint">—</span>'}
+      </div>
+
+      <div class="kv"><b>Children</b>
+        ${children.length ? children.map(x => `<span class="pill" data-jump="${esc(x.id)}">${esc(x.name)}</span>`).join('') : '<span class="hint">—</span>'}
+      </div>
+
+      <div style="margin-top:12px; border-top:1px solid #e5e7eb; padding-top:12px;">
+        <div style="font-weight:750; margin-bottom:6px;">
+          Suggest a correction / add a note
+        </div>
+        <div class="hint" style="margin-bottom:8px;">
+          This form auto-fills the person’s ID + name so you can be specific.
+        </div>
+
+        ${
+          formUrl
+          ? `<iframe
+              id="gform"
+              src="${esc(formUrl)}"
+              width="100%"
+              height="440"
+              frameborder="0"
+              marginheight="0"
+              marginwidth="0"
+              style="border-radius:12px; border:1px solid #e5e7eb;">
+              Loading…
+            </iframe>`
+          : `<div class="err">
+              Google Form is not configured yet. Edit index.html and set:
+              <div class="hint" style="margin-top:6px;">
+                GOOGLE_FORM_EMBED_URL + entry IDs
+              </div>
+            </div>`
+        }
+      </div>
+    `;
+
+    panel.querySelectorAll('[data-jump]').forEach(el => {
+      el.addEventListener('click', () => selectPerson(el.getAttribute('data-jump')));
+    });
+  }
+
+  function selectPerson(id) {
+    selectedId = id;
+    renderPanel(id);
+  }
+
+  function setupSearch() {
+    const input = document.getElementById('search');
+    input.addEventListener('input', () => {
+      const q = input.value.trim().toLowerCase();
+      const treeEl = document.getElementById('tree');
+
+      if (!q) {
+        renderTree();
+        return;
+      }
+
+      const matches = data.people
+        .filter(p => (p.name || '').toLowerCase().includes(q))
+        .slice(0, 80);
+
+      treeEl.innerHTML = `
+        <div class="hint" style="margin-bottom:10px;">Matches (${matches.length})</div>
+        <div class="level" style="margin-bottom:0;">
+          ${matches.map(p => `
+            <div class="node" data-id="${esc(p.id)}">
+              <div class="name">${esc(p.name)}</div>
+              <div class="meta">${esc((p.birth||'') + (p.death ? '–'+p.death : ''))}</div>
+              <div class="meta">${esc(p.id)}</div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+
+      treeEl.querySelectorAll('.node').forEach(n => {
+        n.addEventListener('click', () => selectPerson(n.getAttribute('data-id')));
+      });
+    });
+  }
+
+  async function init() {
+    const resp = await fetch(DATA_URL, { cache: 'no-store' });
+    data = await resp.json();
+    peopleById = new Map(data.people.map(p => [p.id, p]));
+    setupSearch();
+    renderTree();
+    if (data.rootId) selectPerson(data.rootId);
+  }
+
+  init().catch(err => {
+    console.error(err);
+    document.getElementById('tree').innerHTML =
+      '<div class="err">Failed to load family.json. Make sure it is in the same folder as index.html.</div>';
+  });
+</script>
+</body>
+</html>
